@@ -1,0 +1,13 @@
+import "dotenv/config";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { z } from "zod";
+
+// Create server instance
+export default new McpServer({
+  name: "komyun-mcp-server",
+  version: "1.0.0",
+});
+
+
+
