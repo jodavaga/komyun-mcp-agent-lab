@@ -3,10 +3,14 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
   "description": "Exam-prep lab: MCP server over the Komyun Supabase project + a hand-replicated Anthropic Messages API client/agent loop.",
   "scripts": {
     "start": "tsx src/index.ts",
-    "dev": "tsx watch src/index.ts"
+    "dev": "tsx watch src/index.ts",
+    "inspector": "npx @modelcontextprotocol/inspector tsx src/mcp-servers/komyun/index.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.105.0",
