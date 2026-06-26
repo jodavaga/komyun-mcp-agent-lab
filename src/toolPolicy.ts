@@ -1,20 +1,14 @@
 import "dotenv/config";
-import supabase from "./mcp-servers/komyun/supabaseClient";
 import { buildToolError, type ToolErrorPayload } from "./mcp-servers/komyun/errors";
+import { checkAdjustmentAllowed } from "./mcp-servers/komyun/adjustmentGuard";
 import type { McpClient } from "./mcpClient";
-
-function resolveAdjustmentThreshold(): number {
-    const raw = process.env.ADJUSTMENT_THRESHOLD_COP;
-    if (!raw) return 1_000_000;
-    const parsed = Number(raw);
-    return Number.isFinite(parsed) ? parsed : 1_000_000;
-}
-
-const ADJUSTMENT_THRESHOLD_COP = resolveAdjustmentThreshold();
-const ALLOWED_TEST_APARTMENT = process.env.ALLOWED_TEST_APARTMENT;
 
 type PreToolUseDecision = { block: false } | { block: true; payload: ToolErrorPayload };
 
+// Cheap, host-side first line: lets the agent loop reject a bad register_manual_adjustment call
+// before it even reaches the MCP server. checkAdjustmentAllowed (shared with the tool itself in
+// registerManualAdjustment.ts) is the actual hard floor — this hook can be bypassed by any MCP
+// client that doesn't go through this loop, e.g. the Inspector or Claude Desktop.
 export async function preToolUseHook(
     name: string,
     input: Record<string, unknown>
@@ -25,64 +19,9 @@ export async function preToolUseHook(
     const monto = Number(input.monto);
     const motivo = String(input.motivo ?? "");
 
-    if (apartmentCode !== ALLOWED_TEST_APARTMENT) {
-        return {
-            block: true,
-            payload: {
-                errorCategory: "permission",
-                isRetryable: false,
-                message: `This practice server only allows manual adjustments on the test apartment (${ALLOWED_TEST_APARTMENT}).`,
-            },
-        };
-    }
-
-    if (Math.abs(monto) > ADJUSTMENT_THRESHOLD_COP) {
-        const numero = await fileEscalationTicket(apartmentCode, monto, motivo);
-        return {
-            block: true,
-            payload: {
-                errorCategory: "permission",
-                isRetryable: false,
-                message: numero
-                    ? `Adjustment blocked — exceeds the ${ADJUSTMENT_THRESHOLD_COP} COP threshold. Escalation ticket ${numero} filed for administrator review.`
-                    : `Adjustment blocked — exceeds the ${ADJUSTMENT_THRESHOLD_COP} COP threshold. Escalation ticket could not be filed automatically; notify an administrator.`,
-            },
-        };
-    }
-
+    const guard = await checkAdjustmentAllowed(apartmentCode, monto, motivo);
+    if (!guard.allowed) return { block: true, payload: guard.payload };
     return { block: false };
-}
-
-// Files a PQRS ticket for an administrator to review a blocked over-threshold adjustment.
-// Returns the ticket's display number, or null if the lookup/insert failed — a filing failure
-// here must never throw, since the adjustment is already blocked either way.
-async function fileEscalationTicket(apartmentCode: string, monto: number, motivo: string): Promise<string | null> {
-    // pqrs.apto_id is a foreign key to apartamentos.id, not the human-readable codigo — resolve it first.
-    const { data: apto, error: aptoErr } = await supabase
-        .from("apartamentos")
-        .select("id")
-        .eq("codigo", apartmentCode)
-        .maybeSingle();
-
-    if (aptoErr || !apto) return null;
-
-    const { data: escalation, error: insertErr } = await supabase
-        .from("pqrs")
-        .insert({
-            apto_id: apto.id,
-            tipo: "reclamo",
-            categoria: "administracion",
-            prioridad: "alta",
-            estado: "abierta",
-            adjuntos: [], // no DB default on this column in the original backend's insert path — set explicitly
-            titulo: "[ESCALATION] Ajuste manual bloqueado",
-            descripcion: `Monto ${monto} excede el umbral de ${ADJUSTMENT_THRESHOLD_COP} COP. Motivo original: ${motivo}`,
-        })
-        .select("numero") // the human-facing ticket number (e.g. 'PQR-2026-007'), not the internal id
-        .single();
-
-    if (insertErr || !escalation) return null;
-    return escalation.numero;
 }
 
 type ToolCallResult = Awaited<ReturnType<McpClient["callTool"]>>;
