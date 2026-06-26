@@ -6,6 +6,7 @@ import { registerSearchApartmentsInMora } from "./tools/searchApartmentsInMora";
 import { registerDraftJudicialCollectionNotice } from "./tools/draftJudicialCollectionNotice";
 import { registerRegisterManualAdjustment } from "./tools/registerManualAdjustment";
 import { registerUpdatePqrsTicket } from "./tools/updatePqrsTicket";
+import { registerSearchPqrsTickets } from "./tools/searchPqrsTickets";
 
 const server = new McpServer({
   name: "komyun-mcp-server",
@@ -17,6 +18,7 @@ registerSearchApartmentsInMora(server);
 registerDraftJudicialCollectionNotice(server);
 registerRegisterManualAdjustment(server);
 registerUpdatePqrsTicket(server);
+registerSearchPqrsTickets(server);
 
 await server.connect(new StdioServerTransport());
 
