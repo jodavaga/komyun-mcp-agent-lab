@@ -3,11 +3,13 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import supabase from "../supabaseClient";
 import { buildToolError, buildTransientError } from "../errors";
 import { apartmentCodeSchema } from "../validation";
+import { checkAdjustmentAllowed } from "../adjustmentGuard";
 
 export function registerRegisterManualAdjustment(server: McpServer) {
     server.registerTool("register_manual_adjustment", {
         description: `Applies a manual adjustment to one apartment's saldo_admon. 'monto' is a signed COP delta: positive = charge (debe), negative = credit (abono). 'motivo' is required and kept as the audit trail.
         This WRITES data — unlike 'get_apartment_balance', which only reads.
+        This practice server only allows adjustments on one designated test apartment; calls for any other apartment are rejected.
         Large adjustments may be blocked and escalated for administrator review.
         Do NOT use this for balance lookups — use 'get_apartment_balance' for that.`,
         inputSchema: {
@@ -28,6 +30,12 @@ export function registerRegisterManualAdjustment(server: McpServer) {
             openWorldHint: false,
         },
     }, async ({ apartment_code, monto, motivo }) => {
+        // Hard floor — enforced here regardless of caller, since the host-side preToolUseHook
+        // (src/toolPolicy.ts) only runs inside this lab's own agent loop and can't be assumed
+        // present for other MCP clients (Inspector, Claude Desktop, etc.).
+        const guard = await checkAdjustmentAllowed(apartment_code, monto, motivo);
+        if (!guard.allowed) return buildToolError(guard.payload);
+
         const { data: apto, error: aptoErr } = await supabase
             .from("apartamentos")
             .select("id")
