@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import supabase from "../supabaseClient";
-import { buildToolError } from "../errors";
+import { buildToolError, buildTransientError } from "../errors";
 
 export function registerRegisterManualAdjustment(server: McpServer) {
     server.registerTool("register_manual_adjustment", {
@@ -60,7 +60,7 @@ export function registerRegisterManualAdjustment(server: McpServer) {
             .select("saldo_admon, intereses, total, meses_mora, fecha_corte")
             .single();
 
-        if (upsertErr) throw upsertErr;
+        if (upsertErr) return buildTransientError(upsertErr);
 
         return {
             content: [{ type: "text", text: JSON.stringify({ apartment_code, motivo, ajuste_aplicado: monto, ...cartera }) }],

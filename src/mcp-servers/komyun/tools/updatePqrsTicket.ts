@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import supabase from "../supabaseClient";
-import { buildToolError } from "../errors";
+import { buildToolError, buildTransientError } from "../errors";
 
 export function registerUpdatePqrsTicket(server: McpServer) {
     server.registerTool("update_pqrs_ticket", {
@@ -85,7 +85,7 @@ export function registerUpdatePqrsTicket(server: McpServer) {
             .select("id, numero, estado, responsable, nota_interna, respuesta, fecha_cierre, apartamentos(codigo)")
             .single();
 
-        if (updateErr) throw updateErr;
+        if (updateErr) return buildTransientError(updateErr);
 
         return {
             content: [{ type: "text", text: JSON.stringify(updated) }],

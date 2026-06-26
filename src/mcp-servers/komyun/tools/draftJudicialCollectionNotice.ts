@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import supabase from "../supabaseClient";
-import { buildToolError } from "../errors";
+import { buildToolError, buildTransientError } from "../errors";
 
 const JUDICIAL_MORA_THRESHOLD_MONTHS = Number(process.env.JUDICIAL_MORA_THRESHOLD_MONTHS ?? 3);
 
@@ -127,7 +127,7 @@ export function registerDraftJudicialCollectionNotice(server: McpServer) {
             .order("meses_mora", { ascending: false })
             .limit(limit);
 
-        if (error) throw error;
+        if (error) return buildTransientError(error);
 
         const notices = (data ?? []).map((row: any) =>
             buildNotice(row.apartamentos.codigo, firstPropietario(row.apartamentos.propietarios), row)

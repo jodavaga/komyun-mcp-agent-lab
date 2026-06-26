@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import supabase from "../supabaseClient";
+import { buildTransientError } from "../errors";
 
 export function registerSearchApartmentsInMora(server: McpServer) {
     server.registerTool("search_apartments_in_mora", {
@@ -44,7 +45,7 @@ export function registerSearchApartmentsInMora(server: McpServer) {
 
         const { data, error } = await query;
 
-        if (error) throw error;
+        if (error) return buildTransientError(error);
 
         const results = (data ?? []).map((row: any) => ({
             codigo: row.apartamentos.codigo,

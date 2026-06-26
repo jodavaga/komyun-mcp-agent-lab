@@ -10,7 +10,7 @@ export interface ToolErrorPayload {
 
 
 export function buildToolError(payload: ToolErrorPayload): CallToolResult {
-    
+
     return {
         content: [
             {
@@ -18,6 +18,15 @@ export function buildToolError(payload: ToolErrorPayload): CallToolResult {
                 text: JSON.stringify(payload)
             }
         ],
-        isError: true   
+        isError: true
     }
+}
+
+export function buildTransientError(error: unknown): CallToolResult {
+    const message = error instanceof Error ? error.message : String(error);
+    return buildToolError({
+        errorCategory: "transient",
+        isRetryable: true,
+        message: `Error de Supabase: ${message}`,
+    });
 }
