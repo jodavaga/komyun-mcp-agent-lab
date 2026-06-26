@@ -2,6 +2,7 @@ import { createInterface } from "node:readline/promises";
 import Anthropic from "@anthropic-ai/sdk";
 import { addAssistantMessage, addUserMessage, chat, textFromMessage } from "./anthropic";
 import { McpClient } from "./mcpClient";
+import { blockedToolResult, callToolWithRetry, preToolUseHook } from "./toolPolicy";
 
 function logResponseBlocks(response: Anthropic.Message): void {
     for (const block of response.content) {
@@ -28,7 +29,10 @@ export async function runAgentTurn(
 
         const toolResults: Anthropic.ToolResultBlockParam[] = [];
         for (const block of toolUseBlocks) {
-            const { content, isError } = await mcpClient.callTool(block.name, block.input);
+            const decision = await preToolUseHook(block.name, block.input as Record<string, unknown>);
+            const { content, isError } = decision.block
+                ? blockedToolResult(decision.payload)
+                : await callToolWithRetry(mcpClient, block.name, block.input);
             console.log("[tool_result]", block.name, "->", JSON.stringify(content));
             toolResults.push({
                 type: "tool_result",
