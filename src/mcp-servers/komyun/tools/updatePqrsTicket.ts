@@ -53,9 +53,11 @@ export function registerUpdatePqrsTicket(server: McpServer) {
             .from("pqrs")
             .select("numero, estado, apartamentos(codigo)")
             .eq("numero", numero)
-            .single();
+            .maybeSingle();
 
-        if (fetchErr || !current) {
+        if (fetchErr) return buildTransientError(fetchErr);
+
+        if (!current) {
             return buildToolError({
                 errorCategory: "validation",
                 isRetryable: false,
