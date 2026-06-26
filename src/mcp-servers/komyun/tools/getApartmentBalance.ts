@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import supabase from "../supabaseClient";
-import { buildToolError } from "../errors";
+import { buildToolError, buildTransientError } from "../errors";
 
 export function registerGetApartmentBalance(server: McpServer) {
     server.registerTool("get_apartment_balance", { 
@@ -14,6 +14,10 @@ export function registerGetApartmentBalance(server: McpServer) {
             .string()
             .regex(/^[1-3]-\d{3,4}$/, "Apartment code must include the bloque prefix, e.g. '2-1102' or '1-101'")
             .describe("Apartment code including Bloques (e.g. 2-1102, 1-101)"),
+        _simulateTransientError: z
+            .boolean()
+            .optional()
+            .describe("Debug only: when true, skips Supabase and returns a simulated transient error, to exercise the retry path."),
         },
         annotations: {
             readOnlyHint: true,
@@ -21,7 +25,11 @@ export function registerGetApartmentBalance(server: McpServer) {
             idempotentHint: true,
             openWorldHint: false,
         },
-    }, async ({ apartment_code }) => {
+    }, async ({ apartment_code, _simulateTransientError }) => {
+        if (_simulateTransientError) {
+            return buildTransientError(new Error("Simulated transient Supabase error (debug flag)"));
+        }
+
         const { data: apto, error: aptoErr } = await supabase
             .from("apartamentos")
             .select("id")
