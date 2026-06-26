@@ -5,15 +5,15 @@ import { buildToolError, buildTransientError } from "../errors";
 
 export function registerUpdatePqrsTicket(server: McpServer) {
     server.registerTool("update_pqrs_ticket", {
-        description: `Responds to or updates an existing OPEN PQRS ticket, identified by its numeric 'pqrs_id'. Provide at least one of 'estado', 'responsable', 'nota_interna', or 'respuesta'.
+        description: `Responds to or updates an existing OPEN PQRS ticket, identified by its 'numero' ticket number (e.g. 'PQR-2026-006'). Provide at least one of 'estado', 'responsable', 'nota_interna', or 'respuesta'.
         This tool never creates tickets — there is no apartment_code input and no insert path.
-        Do NOT use this on a ticket that is already 'cerrada' — it will be rejected.`,
+        Do NOT use this on a ticket that is already 'cerrada' — it will be rejected.
+        Don't know the numero? Use 'search_pqrs_tickets' to find it first.`,
         inputSchema: {
-            pqrs_id: z
-                .number()
-                .int()
-                .positive()
-                .describe("Numeric id of the existing PQRS ticket to update."),
+            numero: z
+                .string()
+                .min(1)
+                .describe("Ticket number of the existing PQRS ticket to update, e.g. 'PQR-2026-006'."),
             estado: z
                 .enum(["en_proceso", "asignada", "cerrada"])
                 .optional()
@@ -40,7 +40,7 @@ export function registerUpdatePqrsTicket(server: McpServer) {
             idempotentHint: false,
             openWorldHint: false,
         },
-    }, async ({ pqrs_id, estado, responsable, nota_interna, respuesta }) => {
+    }, async ({ numero, estado, responsable, nota_interna, respuesta }) => {
         if (!estado && !responsable && !nota_interna && !respuesta) {
             return buildToolError({
                 errorCategory: "validation",
@@ -51,15 +51,15 @@ export function registerUpdatePqrsTicket(server: McpServer) {
 
         const { data: current, error: fetchErr } = await supabase
             .from("pqrs")
-            .select("id, estado, apartamentos(codigo)")
-            .eq("id", pqrs_id)
+            .select("numero, estado, apartamentos(codigo)")
+            .eq("numero", numero)
             .single();
 
         if (fetchErr || !current) {
             return buildToolError({
                 errorCategory: "validation",
                 isRetryable: false,
-                message: `PQRS #${pqrs_id} no encontrada`,
+                message: `PQRS ${numero} no encontrada`,
             });
         }
 
@@ -67,7 +67,7 @@ export function registerUpdatePqrsTicket(server: McpServer) {
             return buildToolError({
                 errorCategory: "validation",
                 isRetryable: false,
-                message: `PQRS #${pqrs_id} ya está cerrada, no se pueden agregar actualizaciones`,
+                message: `PQRS ${numero} ya está cerrada, no se pueden agregar actualizaciones`,
             });
         }
 
@@ -81,8 +81,8 @@ export function registerUpdatePqrsTicket(server: McpServer) {
         const { data: updated, error: updateErr } = await supabase
             .from("pqrs")
             .update(updates)
-            .eq("id", pqrs_id)
-            .select("id, numero, estado, responsable, nota_interna, respuesta, fecha_cierre, apartamentos(codigo)")
+            .eq("numero", numero)
+            .select("numero, estado, responsable, nota_interna, respuesta, fecha_cierre, apartamentos(codigo)")
             .single();
 
         if (updateErr) return buildTransientError(updateErr);
