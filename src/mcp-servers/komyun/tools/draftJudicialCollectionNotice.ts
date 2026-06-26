@@ -2,8 +2,16 @@ import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import supabase from "../supabaseClient";
 import { buildToolError, buildTransientError } from "../errors";
+import { apartmentCodeSchema } from "../validation";
 
-const JUDICIAL_MORA_THRESHOLD_MONTHS = Number(process.env.JUDICIAL_MORA_THRESHOLD_MONTHS ?? 3);
+function resolveThresholdMonths(): number {
+    const raw = process.env.JUDICIAL_MORA_THRESHOLD_MONTHS;
+    if (!raw) return 3;
+    const parsed = Number(raw);
+    return Number.isFinite(parsed) ? parsed : 3;
+}
+
+const JUDICIAL_MORA_THRESHOLD_MONTHS = resolveThresholdMonths();
 
 interface CarteraRow {
     saldo_admon: number;
@@ -67,9 +75,7 @@ export function registerDraftJudicialCollectionNotice(server: McpServer) {
         Do NOT use this for a simple balance check — use 'get_apartment_balance' for that.
         Do NOT use this for listing/discovery of apartments in mora — use 'search_apartments_in_mora' for that.`,
         inputSchema: {
-            apartment_code: z
-                .string()
-                .regex(/^[1-3]-\d{3,4}$/, "Apartment code must include the bloque prefix, e.g. '2-1102' or '1-101'")
+            apartment_code: apartmentCodeSchema
                 .optional()
                 .describe("Single apartment to draft a notice for. Omit for batch mode over all qualifying apartments."),
             limit: z
@@ -92,9 +98,11 @@ export function registerDraftJudicialCollectionNotice(server: McpServer) {
                 .from("apartamentos")
                 .select("id, propietarios(nombre, email)")
                 .eq("codigo", apartment_code)
-                .single();
+                .maybeSingle();
 
-            if (aptoErr || !apto) {
+            if (aptoErr) return buildTransientError(aptoErr);
+
+            if (!apto) {
                 return buildToolError({
                     errorCategory: "validation",
                     isRetryable: false,
@@ -102,11 +110,13 @@ export function registerDraftJudicialCollectionNotice(server: McpServer) {
                 });
             }
 
-            const { data: cartera } = await supabase
+            const { data: cartera, error: carteraErr } = await supabase
                 .from("cartera")
                 .select("saldo_admon, intereses, total, meses_mora, fecha_corte")
                 .eq("apto_id", apto.id)
                 .maybeSingle();
+
+            if (carteraErr) return buildTransientError(carteraErr);
 
             if (!cartera || cartera.meses_mora <= JUDICIAL_MORA_THRESHOLD_MONTHS) {
                 return buildToolError({

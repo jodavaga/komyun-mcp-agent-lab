@@ -2,6 +2,7 @@ import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import supabase from "../supabaseClient";
 import { buildToolError, buildTransientError } from "../errors";
+import { apartmentCodeSchema } from "../validation";
 
 export function registerRegisterManualAdjustment(server: McpServer) {
     server.registerTool("register_manual_adjustment", {
@@ -10,9 +11,7 @@ export function registerRegisterManualAdjustment(server: McpServer) {
         Large adjustments may be blocked and escalated for administrator review.
         Do NOT use this for balance lookups — use 'get_apartment_balance' for that.`,
         inputSchema: {
-            apartment_code: z
-                .string()
-                .regex(/^[1-3]-\d{3,4}$/, "Apartment code must include the bloque prefix, e.g. '2-1102' or '1-101'")
+            apartment_code: apartmentCodeSchema
                 .describe("Apartment code including Bloques (e.g. 2-1102, 1-101)"),
             monto: z
                 .number()
@@ -33,9 +32,11 @@ export function registerRegisterManualAdjustment(server: McpServer) {
             .from("apartamentos")
             .select("id")
             .eq("codigo", apartment_code)
-            .single();
+            .maybeSingle();
 
-        if (aptoErr || !apto) {
+        if (aptoErr) return buildTransientError(aptoErr);
+
+        if (!apto) {
             return buildToolError({
                 errorCategory: "validation",
                 isRetryable: false,
@@ -43,11 +44,13 @@ export function registerRegisterManualAdjustment(server: McpServer) {
             });
         }
 
-        const { data: existing } = await supabase
+        const { data: existing, error: existingErr } = await supabase
             .from("cartera")
             .select("saldo_admon")
             .eq("apto_id", apto.id)
             .maybeSingle();
+
+        if (existingErr) return buildTransientError(existingErr);
 
         const nuevoSaldo = (existing?.saldo_admon ?? 0) + monto;
 
